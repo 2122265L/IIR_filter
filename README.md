@@ -11,6 +11,27 @@ The frequencies should be normalised to nyquist = 0.5.
 
 The order number and the filter type should be specifid too.
 
+## Usage
+
+`import IIRpy`
+
+
+## Initialisation
+
+`Var = IIRpy.IIR(order, Cutoff_frequencies, Filter_type)`
+
+## Filtering
+
+Sample by sample for realtime processing:
+
+```
+y = Var.filter(signal)
+```
+
+## Coding examples
+See the the IIRpy_Demo.py document for an example implementation of the filter
+
+
 Hope you like it,
 
 2122265L

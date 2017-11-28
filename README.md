@@ -12,11 +12,13 @@ The order number and the filter type should be specifid too.
 ## Usage
 
 Access the Module with:
+  
   `import IIRpy`
 
 ## Initialisation
 
-Create an instance of the function and initialise it as follows
+Create an instance of the function and initialise it as follows:
+  
   `Var = IIRpy.IIR(order, Cutoff_frequencies, Filter_type)`
 
 ## Filtering

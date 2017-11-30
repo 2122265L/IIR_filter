@@ -1,148 +1,278 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Sun Nov 26 09:52:19 2017
+Created on Wed Nov 29 13:19:40 2017
 
 @author: seiyu
 """
 
-if __name__ == "__main__":
+import numpy as np
+from scipy.signal import butter, buttord
 
-    import numpy as np
-    from scipy.signal import butter
+class IIR:
     
-    class IIR:
-        """
-        IIR filter Class
-        
-        Takes initialiseation inputs:
-            Order: of filter, defult = 2
-            Cut off frequencies: normalised to nyquist = 0.5
-            filter type: low, high, pass, stop
-            
-        Real time filter:
-            Single Input Single Output (SISO) filter 
-        
-        Coeficients can be extracted:
-            numerator coeficients = self.b
-            denomiator coeficients = self.a
-        """
-        
-        def init2(self, _N, _fc, filter):
-            
-            #---------------------------------------------------------------------            
-            _sos = butter(self.N, _fc, btype=filter, output='sos')
-            
-            a, b = np.zeros([_N,3]), np.zeros([_N,3])
-            # sos stores the 'b's then the 'a's 
-            for i in range(_N):
-                a[i] = _sos[i][3:]
-                b[i] = _sos[i][:3]    
-            
-            return a, b
-            #----------------------------------------------------------------------
-            #----------------------------------------------------------------------
-            
-        def init_coefs(self):
-            
-            self.a, self.b = np.zeros([self.repeat,self.factor,3]), np.zeros([self.repeat,self.factor,3])
-            self.buffer1, self.buffer2  = np.zeros([self.repeat, self.factor]), np.zeros([self.repeat, self.factor])
-            
-            return None
-            #----------------------------------------------------------------------
-            #----------------------------------------------------------------------   
-        
-        def filt_type(self, filter, _fc):
-            
-            if (filter[0].lower() == 'l'):
-                filter = 'lowpass'
-                self.parrallel = False
-                self.factor = self.N//2 + self.N%2
-                _fc = np.atleast_1d(_fc[0])
-                
-            elif (filter[0].lower() == 'h'):
-                filter = 'highpass'
-                self.parrallel = False
-                self.factor = self.N//2 + self.N%2
-                _fc = np.atleast_1d(_fc[0])
-                
-            elif (filter.lower() == 'bp') | (filter.lower() == 'bandpass') | (filter[0].lower() == 'p'):
-                filter = 'bandpass'
-                self.parrallel = True
-                
-            elif (filter.lower() == 'bs') | (filter.lower() == 'bandstop') | (filter[0].lower() == 's'):
-                filter = 'bandstop'
-                self.parrallel = False
+    """IIR Filter Class
+    Combines butter and buttord functions to create a cascade of sencond order
+    filters. The buttord function allows for more rigorous design, where
+    the lowest order digital or analog Butterworth filter
+    that loses no more than `gpass` dB in the passband and has at least
+    `gstop` dB attenuation in the stopband can be specifid.
     
-                
-            return filter, _fc
-            #----------------------------------------------------------------------
-            #----------------------------------------------------------------------
+    Function
+    --------
+    IIRpy(wp, filter, **optional)
+        optionals: ord, ws, gpass, gstop, nyq, analog
         
-        def __init__(self, _N=2, _fc, filter='lowpass'):
+    Parameters
+    ----------
+    ord : int
+        Defult = 6
+        Order of the filter. This vaule
+    filter: char
+        lowpass  == low  == lp == l
+        highpass == high == hp == h
+        bandpass == pass == bp == p
+        bandstop == stop == bs == s
+    wp, ws : float
+        Passband and stopband edge frequencies.
+        For digital filters, these are normalized from 0 to 0.5, where 0.5 is the
+        Nyquist frequency.  
+        Example use:
+            - Lowpass:   wp = 0.2,          ws = 0.3
+            - Highpass:  wp = 0.3,          ws = 0.2
+            - Bandpass:  wp = [0.2, 0.3],   ws = [0.1, 0.4]
+            - Bandstop:  wp = [0.1, 0.6],   ws = [0.2, 0.5]
             
-            # turn _fc into an array
-            _fc = np.atleast_1d(_fc) 
-            # set nyq frequency as 1 for butter function
-            _fc = [2*x for x in _fc] 
-            # make sure cutoff frequencies are properly ordered
-            _fc = sorted(_fc)
-            cutoffs = len(_fc)
+            - Multi Bandpass + Highpass:
+                         wp = [0.10, 0.20, 0.30, 0.40, 0.45],
+                         ws = [0.05, 0.25, 0.28, 0.43, 0.43]
             
-            self.N = _N # order
-            self.factor = _N
-            # number of loops cascaded 2nd order filter = repeat
-            self.repeat = 1
+            - Multi Bandstop + Lowpass:
+                         wp = [0.10, 0.30, 0.40],   
+                         ws = [0.15, 0.25, 0.45]
+                         
+        For analog filters, `wp` and `ws` are angular frequencies (e.g. rad/s).
+    gpass : float 
+        Defult = 3dB loss
+        The maximum loss in the passband (dB). (+ve value)
+    gstop : float
+        Defult = 40dB loss
+        The minimum attenuation in the stopband (dB). (+ve value)
+    analog : bool, optional
+        Defult = True
+        When True, return an analog filter, otherwise a digital filter is
+        returned.
+    nyq : float
+        Delfult = 0.5
+        Option to normalise the nyquist frequency to any value.
+        Defult is 0.5.
+        
+    Returns
+    -------
+    No values are returned after initialisation.
+    
+    Filtering
+    ---------
+    Real time filter:
+        Single Input Single Output (SISO) filter, only accepts real values.
+    
+    
+    Notes:  Analogue frequency == 'False' << has not been tested
+            If any errors our found please forward on the error and inputs
+            so that it can be fix
             
-            # standerdize the filter type
-            filter, _fc = IIR.filt_type(self, filter, _fc)
+    """
+    
+    def __init2(self, _wp, ws, filter, *args):
+        
+        if ws is not None:
+            order, _wp = buttord(_wp, ws, args[0], args[1])
+            if (len(np.atleast_1d(_wp)) == 1) and (filter[0].lower() == 'b'):
+                if filter == 'bandpass':
+                    filter = 'highpass'
+                else:
+                    filter = 'lowpass'
+        else:
+            order = self.ord 
+
+        #----------------------------------------------------------------------            
+        _sos = butter(order, _wp, btype=filter, output='sos')
+        
+        a, b = np.zeros([len(_sos),3]), np.zeros([len(_sos),3])
+
+        for i in range(len(_sos)):
+            a[i] = _sos[i][3:]
+            b[i] = _sos[i][:3]    
+
+        IIR.__init_coefs(self, len(a))
+        
+        self.a[self.flag-1] = a
+        self.b[self.flag-1] = b
+        
+        return None
+        #----------------------------------------------------------------------
+        #----------------------------------------------------------------------
+        
+    def __init_coefs(self, factor):
+        
+        self.a.append(np.zeros([factor,3]))
+        self.b.append(np.zeros([factor,3]))
+        self.buffer1.append(np.zeros([factor]))
+        self.buffer2.append(np.zeros([factor]))
+        self.flag += 1
+        
+        return None
+        #----------------------------------------------------------------------
+        #----------------------------------------------------------------------   
+    
+    def __filt_type(self, filter, _wp, ws):
+        
+        if (filter[0].lower() == 'l'):
+            filter = 'lowpass'
+            self.parrallel = False
+            _wp = np.atleast_1d(_wp[0])
+            if ws is not None: ws = np.atleast_1d(ws[0])
+
+        elif (filter[0].lower() == 'h'):
+            filter = 'highpass'
+            self.parrallel = False
+            _wp = np.atleast_1d(_wp[0])
+            if ws is not None: ws = np.atleast_1d(ws[0])
             
-            #----------------------------------------------------------------------
-            # Cascade filter actualisation 
-            if ((filter == 'bandpass') or (filter == 'bandstop')) and cutoffs > 2:
-                fc = _fc
+        elif (filter.lower() == 'bp') | (filter.lower() == 'bandpass') | (filter[0].lower() == 'p'):
+            filter = 'bandpass'
+            self.parrallel = True
+            
+        elif (filter.lower() == 'bs') | (filter.lower() == 'bandstop') | (filter[0].lower() == 's'):
+            filter = 'bandstop'
+            self.parrallel = False
+
+            
+        return filter, _wp, ws
+        #----------------------------------------------------------------------
+        #----------------------------------------------------------------------
+    
+    def __init__(self, _wp, filter='lowpass', **optional):
+        
+        # optionals:
+        ord = optional.get('ord', 6)
+        ws = optional.get('ws', None)
+        gpass = optional.get('gpass', 3)
+        gstop = optional.get('gstop', 40)
+        analog = optional.get('analog', True)
+        nyq = optional.get('nyq', 0.5)
+        
+        self.ord = ord # order
+        # number of cascaded 2nd order filter = repeat
+        self.repeat = 1
+        
+        _wp = np.atleast_1d(_wp)
+        _wp = [x/nyq for x in _wp]
+        
+        if ws is not None:
+            ws = np.atleast_1d(ws)
+            ws = [x/nyq for x in ws]
+            if len(ws) != len(_wp): raise ValueError("lenght of ws and wp does not match")
+            
+        if not analog:
+            _wp = [np.tan(np.pi * x / 2.0) for x in _wp]
+            if ws is not None:
+                ws  = [np.tan(np.pi * x / 2.0) for x in  ws]
                 
-                if cutoffs%2: 
-                    _fc = np.append(_fc,1)# extend filter to nyquist if need be
+        # standerdize the filter type
+        filter, _wp, ws = IIR.__filt_type(self, filter, _wp, ws)
+        cutoffs = len(_wp)
+        
+        #----------------------------------------------------------------------
+        # Cascade filter coeficient seperation
+        if (filter[0] == 'b') and cutoffs > 2:
+            first_order_filter = 0
+            
+            if (cutoffs%2): 
+                if (ws is None):
+                    _wp = np.append(_wp,0.99999999)# extend filter to nyquist if need be
                     cutoffs += 1
+                elif (ws is not None) & (len(ws)%2):
+                    first_order_filter = 1
                 
-                self.repeat = cutoffs//2
-                fc = np.zeros([self.repeat,2])
-                for i in range(self.repeat):
-                    fc[i] = _fc[i*2:i*2+2]
-            #----------------------------------------------------------------------
-            IIR.init_coefs(self)
+            self.repeat = cutoffs//2
+            fc = []
+            fc.append(np.zeros([self.repeat,2]))
+            fc.append(np.zeros([first_order_filter]))
+            print('fc', fc)   
             
-            if cutoffs > 2:
-                for i in range(self.repeat):
-                    self.a[i], self.b[i] = IIR.init2(self, _N, fc[i], filter)
-            else:
-                self.a[0], self.b[0] = IIR.init2(self, self.factor, _fc, filter)
-            #----------------------------------------------------------------------
-            #----------------------------------------------------------------------
+            if ws is not None:
                 
-        def workhorse(self, x, j):
+                fws = []
+                fws.append(np.zeros([self.repeat,2]))
+                fws.append(np.zeros([first_order_filter]))
+                     
+                if first_order_filter is not 0:
+                    for i in range(self.repeat):
+                        fc[0][i] = _wp[i*2:i*2+2]
+                        fws[0][i] = ws[i*2:i*2+2]
+                    fc[-1] =_wp[-1]
+                    fws[-1]= ws[-1]
+                else:
+                    for i in range(self.repeat):
+                        fc[i] = _wp[i*2:i*2+2]
+                        fws[i] = ws[i*2:i*2+2]
+                    
+            else:    
+                for i in range(self.repeat):
+                    fc[0][i] = _wp[i*2:i*2+2]
             
-            for i in range(self.factor):
-                acc_input = x - self.buffer1[j][i]*self.a[j][i][1] -self.buffer2[j][i]*self.a[j][i][2]
-                x = (acc_input*self.b[j][i][0] + self.buffer1[j][i]*self.b[j][i][1] + self.buffer2[j][i]*self.b[j][i][2])*self.a[j][i][0]
-                self.buffer2[j][i] = self.buffer1[j][i]
-                self.buffer1[j][i] = acc_input
-    
-            return x
-            #----------------------------------------------------------------------
-            #----------------------------------------------------------------------
+            self.repeat += first_order_filter
+                
+        #----------------------------------------------------------------------
+        self.a = []
+        self.b = []
+        self.buffer1 = []
+        self.buffer2 = []
+        self.flag = 0
+        
+        if (cutoffs > 2) & (ws is None):
+            for i in range(self.repeat):
+                IIR.__init2(self, fc[0][i], None, filter)
+                
+        elif (cutoffs > 2) & (ws is not None):
+            if (first_order_filter == 0):
+                for i in range(self.repeat):
+                    IIR.__init2(self, fc[i], fws[i], filter, gpass, gstop)
             
-        def filter(self, x):
-            
-            if self.parrallel == False: 
-                for j in range(self.repeat):
-                    x = IIR.workhorse(self, x, j)
-                return x
             else:
-                _x = 0
-                for j in range(self.repeat):
-                    _x += IIR.workhorse(self, x, j)
-                return _x
-            #----------------------------------------------------------------------
-            #----------------------------------------------------------------------
+                for i in range(len(fc[0])):
+                    IIR.__init2(self, fc[0][i], fws[0][i], filter, gpass, gstop)
+                    
+                IIR.__init2(self, fc[1], fws[1], filter, gpass, gstop)
+        
+        else:
+            IIR.__init2(self, _wp, ws, filter, gpass, gstop)
+        #----------------------------------------------------------------------
+        #----------------------------------------------------------------------
+        
+    def __workhorse(self, x, j):
+        
+        for i in range(len(self.a[j])):
+            acc_input = x - self.buffer1[j][i]*self.a[j][i][1] -self.buffer2[j][i]*self.a[j][i][2]
+            x = (acc_input*self.b[j][i][0] + self.buffer1[j][i]*self.b[j][i][1] + self.buffer2[j][i]*self.b[j][i][2])*self.a[j][i][0]
+            self.buffer2[j][i] = self.buffer1[j][i]
+            self.buffer1[j][i] = np.real(acc_input)
+
+        return x
+        #----------------------------------------------------------------------
+        #----------------------------------------------------------------------
+        
+    def filter(self, x):
+        
+        if self.parrallel == False: 
+            for j in range(self.repeat):
+                x = IIR.__workhorse(self, x, j)
+            return np.real(x)
+        else:
+            _x = 0
+            for j in range(self.repeat):
+                _x += IIR.__workhorse(self, x, j)
+            return np.real(_x)
+        #----------------------------------------------------------------------
+        #----------------------------------------------------------------------

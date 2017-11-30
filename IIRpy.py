@@ -199,7 +199,6 @@ class IIR:
             fc = []
             fc.append(np.zeros([self.repeat,2]))
             fc.append(np.zeros([first_order_filter]))
-            print('fc', fc)   
             
             if ws is not None:
                 

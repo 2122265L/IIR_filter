@@ -19,7 +19,15 @@ Access the Module with:
 
 Create an instance of the function and initialise it as follows:
   
-  `Var = IIRpy.IIR(order, Cutoff_frequencies, Filter_type)`
+  `Var = IIRpy.IIR(Cutoff_frequencies, Filter_type, **optionals)`
+  
+  optionals include:
+      ord = Order of filter: only used if ws is not given
+      ws = stopband edge frequancy
+        gpass = maximum loss in passband: only used if ws is given
+        gstop = maximum loss in stopband: only used if ws is given
+      analog = bool :  does prewarping if needed << untested
+      nyq = define nyquist normalisation frequency
 
 ## Filtering
 

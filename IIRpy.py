@@ -9,6 +9,24 @@ Created on Wed Nov 29 13:19:40 2017
 import numpy as np
 from scipy.signal import butter, buttord
 
+class __sos__:
+    
+    def __init__(self, a, b): 
+        self.buffer1 = 0
+        self.buffer2 = 0
+        self.a1 = a[1]
+        self.a2 = a[2]
+        self.b0 = b[0]
+        self.b1 = b[1]
+        self.b2 = b[2]
+
+    def filter(self, x):        
+        acc_input = x - self.buffer1*self.a1 -self.buffer2*self.a2
+        acc_output = acc_input*self.b0 + self.buffer1*self.b1 + self.buffer2*self.b2
+        self.buffer2 = self.buffer1
+        self.buffer1 = acc_input
+        return acc_output
+
 class IIR:
     
     """IIR Filter Class
@@ -95,35 +113,24 @@ class IIR:
         else:
             order = self.ord 
 
+        
         #----------------------------------------------------------------------            
         _sos = butter(order, _wp, btype=filter, output='sos')
         
         a, b = np.zeros([len(_sos),3]), np.zeros([len(_sos),3])
-
+        #----------------------------------------------------------------------        
+        
         for i in range(len(_sos)):
             a[i] = _sos[i][3:]
             b[i] = _sos[i][:3]    
-
-        IIR.__init_coefs(self, len(a))
-        
-        self.a[self.flag-1] = a
-        self.b[self.flag-1] = b
-        
-        return None
-        #----------------------------------------------------------------------
-        #----------------------------------------------------------------------
-        
-    def __init_coefs(self, factor):
-        
-        self.a.append(np.zeros([factor,3]))
-        self.b.append(np.zeros([factor,3]))
-        self.buffer1.append(np.zeros([factor]))
-        self.buffer2.append(np.zeros([factor]))
+         
+        self.sos.append(np.zeros(len(a)))        
+        self.sos[self.flag] = [__sos__(a[i],b[i]) for i in range(len(a))]
         self.flag += 1
         
         return None
         #----------------------------------------------------------------------
-        #----------------------------------------------------------------------   
+        #---------------------------------------------------------------------- 
     
     def __filt_type(self, filter, _wp, ws):
         
@@ -198,7 +205,7 @@ class IIR:
             self.repeat = cutoffs//2
             fc = []
             fc.append(np.zeros([self.repeat,2]))
-            fc.append(np.zeros([first_order_filter]))
+            fc.append(np.zeros([first_order_filter])) 
             
             if ws is not None:
                 
@@ -223,12 +230,9 @@ class IIR:
             
             self.repeat += first_order_filter
                 
-        #----------------------------------------------------------------------
-        self.a = []
-        self.b = []
-        self.buffer1 = []
-        self.buffer2 = []
+        #----------------------------------------------------------------------        
         self.flag = 0
+        self.sos= []
         
         if (cutoffs > 2) & (ws is None):
             for i in range(self.repeat):
@@ -238,7 +242,7 @@ class IIR:
             if (first_order_filter == 0):
                 for i in range(self.repeat):
                     IIR.__init2(self, fc[i], fws[i], filter, gpass, gstop)
-            
+                    
             else:
                 for i in range(len(fc[0])):
                     IIR.__init2(self, fc[0][i], fws[0][i], filter, gpass, gstop)
@@ -249,29 +253,25 @@ class IIR:
             IIR.__init2(self, _wp, ws, filter, gpass, gstop)
         #----------------------------------------------------------------------
         #----------------------------------------------------------------------
-        
-    def __workhorse(self, x, j):
-        
-        for i in range(len(self.a[j])):
-            acc_input = x - self.buffer1[j][i]*self.a[j][i][1] -self.buffer2[j][i]*self.a[j][i][2]
-            x = (acc_input*self.b[j][i][0] + self.buffer1[j][i]*self.b[j][i][1] + self.buffer2[j][i]*self.b[j][i][2])*self.a[j][i][0]
-            self.buffer2[j][i] = self.buffer1[j][i]
-            self.buffer1[j][i] = np.real(acc_input)
+        self.iterator = [len(x) for x in self.sos]
+        #----------------------------------------------------------------------
 
-        return x
-        #----------------------------------------------------------------------
-        #----------------------------------------------------------------------
-        
     def filter(self, x):
         
         if self.parrallel == False: 
             for j in range(self.repeat):
-                x = IIR.__workhorse(self, x, j)
+                for i in range(self.iterator[j]):
+                    x = self.sos[j][i].filter(x)
+
             return np.real(x)
         else:
-            _x = 0
+            X = 0
             for j in range(self.repeat):
-                _x += IIR.__workhorse(self, x, j)
-            return np.real(_x)
+                _x = 0
+                for i in range(self.iterator[j]):
+                    if i==0:_x = self.sos[j][i].filter(x)
+                    else:_x = self.sos[j][i].filter(_x)     
+                X += _x
+            return np.real(X)
         #----------------------------------------------------------------------
         #----------------------------------------------------------------------
